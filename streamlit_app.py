@@ -1,14 +1,8 @@
-# Step 1: Install necessary libraries
-# You can run this in your environment, like Google Colab, local machine, or a cloud VM
-!pip install transformers
-!pip install streamlit
-
-# Step 2: Import necessary libraries
 import streamlit as st
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
 
-# Step 3: Load the models using Streamlit's caching to improve response time
+# Cache the chatbot model to avoid reloading on every interaction
 @st.cache_resource(show_spinner=False)
 def load_chatbot_model():
     model_name = "microsoft/DialoGPT-medium"
@@ -16,6 +10,7 @@ def load_chatbot_model():
     model = AutoModelForCausalLM.from_pretrained(model_name)
     return model, tokenizer
 
+# Cache the QA model to avoid reloading
 @st.cache_resource(show_spinner=False)
 def load_qa_model():
     return pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
@@ -24,66 +19,63 @@ def load_qa_model():
 chatbot_model, chatbot_tokenizer = load_chatbot_model()
 qa_pipeline = load_qa_model()
 
-# Step 4: Create the chatbot response function
+# Function to generate a chatbot response
 def chatbot_response(user_input, chat_history_ids=None, max_length=50, temperature=0.7):
-    # Tokenize the user input
+    # Tokenize the input
     new_input_ids = chatbot_tokenizer.encode(user_input + chatbot_tokenizer.eos_token, return_tensors='pt')
-
-    # Append user input to the chat history
+    
+    # Append to the conversation history
     bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1) if chat_history_ids is not None else new_input_ids
-
-    # Generate response using the model
+    
+    # Generate response
     chat_history_ids = chatbot_model.generate(bot_input_ids, max_length=max_length, temperature=temperature, pad_token_id=chatbot_tokenizer.eos_token_id)
-
+    
     # Decode the response
     response = chatbot_tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-
     return response, chat_history_ids
 
-# Step 5: Create a function for the QA model
+# Function to get an answer from the QA model
 def qa_response(user_question, context):
-    # Generate answer using the question-answering pipeline
-    answer = qa_pipeline(question=user_question, context=context)
-    return answer['answer']
+    return qa_pipeline(question=user_question, context=context)['answer']
 
-# Step 6: Streamlit interface
+# Streamlit interface layout
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Smart Chatbot with QA</h1>", unsafe_allow_html=True)
 
-# Sidebar configuration for user options
+# Sidebar with settings for chatbot response control
 st.sidebar.title("Chatbot Settings")
 max_length = st.sidebar.slider("Max length of response", min_value=20, max_value=100, step=10, value=50)
 temperature = st.sidebar.slider("Response creativity (Temperature)", min_value=0.1, max_value=1.0, step=0.1, value=0.7)
 use_qa = st.sidebar.checkbox("Answer factual questions", value=False)
 
-# Chat history (stored as a session state to maintain state between interactions)
+# Chat history (stored in session state for keeping conversation between interactions)
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = None
 
-# Context input for the QA model
-context_input = st.text_area("Provide some background/context (for QA model)", "")
+# Input for providing background context for the QA model
+context_input = st.text_area("Provide background/context for QA (optional)", "")
 
 # User input
-user_input = st.text_input("Type your message here...")
+user_input = st.text_input("Ask a question or say something...")
 
-# If there's user input, process it
+# Process user input
 if user_input:
     if use_qa and context_input:
-        # If QA mode is enabled and context is provided, use the QA model
+        # Use the QA model if enabled and context is provided
         response = qa_response(user_input, context_input)
-        st.session_state['chat_history'] = None  # Reset chat history when using QA model
+        st.session_state['chat_history'] = None  # Clear chat history for QA
     else:
-        # Use the chatbot model for general conversation
+        # Use the chatbot model for conversation
         response, st.session_state['chat_history'] = chatbot_response(user_input, st.session_state['chat_history'], max_length, temperature)
     
-    # Display the chatbot's response
+    # Display the response
     st.write(f"**Chatbot**: {response}")
 
-# Display a button to clear chat history
+# Button to clear the conversation history
 if st.button("Clear Conversation"):
     st.session_state['chat_history'] = None
     st.write("**Chatbot**: Conversation has been cleared.")
 
-# Add some style to the UI
+# Add some style to the interface
 st.markdown("""
     <style>
     .stTextInput > div > div > input {
@@ -110,4 +102,3 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
