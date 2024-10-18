@@ -24,6 +24,26 @@ def chatbot_response(user_input, chat_history_ids=None, max_length=50, temperatu
     # Tokenize the input
     new_input_ids = chatbot_tokenizer.encode(user_input + chatbot_tokenizer.eos_token, return_tensors='pt')
     
+    # Append to the conversation history, if available
+    if chat_history_ids is not None:
+        # Trim the chat history if it exceeds a reasonable length
+        if chat_history_ids.size()[1] > 1000:  # Arbitrarily limiting the token size to avoid overflow
+            chat_history_ids = chat_history_ids[:, -1000:]
+        bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1)
+    else:
+        bot_input_ids = new_input_ids
+    
+    # Generate response
+    chat_history_ids = chatbot_model.generate(bot_input_ids, max_length=max_length, temperature=temperature, pad_token_id=chatbot_tokenizer.eos_token_id)
+    
+    # Decode the response
+    response = chatbot_tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
+    
+    return response, chat_history_ids
+
+    # Tokenize the input
+    new_input_ids = chatbot_tokenizer.encode(user_input + chatbot_tokenizer.eos_token, return_tensors='pt')
+    
     # Append to the conversation history
     bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1) if chat_history_ids is not None else new_input_ids
     
